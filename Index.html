@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<title>Crucigrama Numérico</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 15px;
+    min-height: 100vh;
+    font-family: Arial, sans-serif;
+    background: #f2f2f2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    margin: 5px 0 10px;
+    font-size: 24px;
+}
+
+#info {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+#grid {
+    width: min(94vw, 500px);
+    aspect-ratio: 1 / 1;
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    grid-template-rows: repeat(10, 1fr);
+    gap: 2px;
+    background: #333;
+    border: 2px solid #333;
+}
+
+.cell {
+    min-width: 0;
+    min-height: 0;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(12px, 4vw, 22px);
+    font-weight: bold;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: pointer;
+}
+
+.cell.valid {
+    background: #fff176;
+}
+
+.cell.filled {
+    background: #90caf9;
+    cursor: default;
+}
+
+.buttons {
+    margin: 15px 0;
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    background: #333;
+    color: white;
+}
+
+button:active {
+    transform: scale(0.97);
+}
+
+#ranking {
+    width: min(94vw, 500px);
+    background: white;
+    border-radius: 10px;
+    padding: 12px 18px;
+    margin-top: 5px;
+}
+
+#ranking h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+}
+
+#ranking ol {
+    margin: 0;
+    padding-left: 25px;
+}
+
+#ranking li {
+    margin: 5px 0;
+}
+
+.game-over {
+    color: #d32f2f;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Crucigrama Numérico</h1>
+
+<div id="info">
+    Número: <span id="nextNumber">1</span>
+</div>
+
+<div id="grid"></div>
+
+<div class="buttons">
+    <button id="undoButton">↩ Deshacer</button>
+    <button id="restartButton">🔄 Reiniciar</button>
+</div>
+
+<div id="ranking">
+    <h2>🏆 Ranking</h2>
+    <ol id="rankingList"></ol>
+</div>
+
+<script>
+
+const SIZE = 10;
+
+let board = [];
+let currentNumber = 1;
+let lastPosition = null;
+let history = [];
+let playerName = "";
+let gameFinished = false;
+
+const grid = document.getElementById("grid");
+const nextNumber = document.getElementById("nextNumber");
+const rankingList = document.getElementById("rankingList");
+const undoButton = document.getElementById("undoButton");
+const restartButton = document.getElementById("restartButton");
+
+
+// =====================================================
+// CREAR TABLERO
+// =====================================================
+
+function createBoard() {
+
+    grid.innerHTML = "";
+
+    for (let row = 0; row < SIZE; row++) {
+
+        for (let col = 0; col < SIZE; col++) {
+
+            const cell = document.createElement("div");
+
+            cell.className = "cell";
+
+            cell.dataset.row = row;
+            cell.dataset.col = col;
+
+            cell.addEventListener("click", function () {
+                tryPlaceNumber(row, col);
+            });
+
+            grid.appendChild(cell);
+        }
+    }
+}
+
+
+// =====================================================
+// INICIAR PARTIDA
+// =====================================================
+
+function startGame() {
+
+    playerName = prompt("Introduce tu nombre:");
+
+    if (!playerName || !playerName.trim()) {
+        playerName = "Jugador";
+    }
+
+    playerName = playerName.trim();
+
+    board = Array.from(
+        { length: SIZE },
+        () => Array(SIZE).fill(null)
+    );
+
+    currentNumber = 1;
+    lastPosition = null;
+    history = [];
+    gameFinished = false;
+
+    createBoard();
+
+    updateDisplay();
+
+    markValidCells();
+}
+
+
+// =====================================================
+// COMPROBAR SI UNA CASILLA ES VÁLIDA
+// =====================================================
+
+function isValidCell(row, col) {
+
+    // La casilla tiene que estar vacía.
+    if (board[row][col] !== null) {
+        return false;
+    }
+
+    // El primer número puede colocarse en cualquier casilla vacía.
+    if (lastPosition === null) {
+        return true;
+    }
+
+    const rowDistance = Math.abs(row - lastPosition.row);
+    const colDistance = Math.abs(col - lastPosition.col);
+
+
+    // ---------------------------------------------
+    // HORIZONTAL
+    // ---------------------------------------------
+    // Exactamente 3 posiciones de distancia:
+    //
+    // X . . X
+    //
+    // Hay dos casillas entre los números.
+    // ---------------------------------------------
+
+    if (
+        rowDistance === 0 &&
+        colDistance === 3
+    ) {
+        return true;
+    }
+
+
+    // ---------------------------------------------
+    // VERTICAL
+    // ---------------------------------------------
+    // X
+    // .
+    // .
+    // X
+    //
+    // Dos casillas entre los números.
+    // ---------------------------------------------
+
+    if (
+        colDistance === 0 &&
+        rowDistance === 3
+    ) {
+        return true;
+    }
+
+
+    // ---------------------------------------------
+    // DIAGONAL
+    // ---------------------------------------------
+    // X
+    // .
+    //   .
+    //     X
+    //
+    // Una casilla intermedia en diagonal.
+    // ---------------------------------------------
+
+    if (
+        rowDistance === 2 &&
+        colDistance === 2
+    ) {
+        return true;
+    }
+
+
+    return false;
+}
+
+
+// =====================================================
+// MARCAR TODAS LAS CASILLAS VÁLIDAS
+// =====================================================
+
+function markValidCells() {
+
+    const cells = document.querySelectorAll(".cell");
+
+    let validMoves = 0;
+
+    cells.forEach(cell => {
+
+        const row = Number(cell.dataset.row);
+        const col = Number(cell.dataset.col);
+
+        cell.classList.remove("valid");
+
+        if (isValidCell(row, col)) {
+
+            cell.classList.add("valid");
+
+            validMoves++;
+        }
+    });
+
+
+    // Si no queda ninguna casilla válida,
+    // la partida termina aquí.
+    if (validMoves === 0 && lastPosition !== null) {
+
+        finishGame();
+    }
+}
+
+
+// =====================================================
+// COLOCAR NÚMERO
+// =====================================================
+
+function tryPlaceNumber(row, col) {
+
+    if (gameFinished) {
+        return;
+    }
+
+    // MUY IMPORTANTE:
+    // la misma función que marca las casillas
+    // determina si se puede colocar.
+    if (!isValidCell(row, col)) {
+        return;
+    }
+
+    const previousPosition = lastPosition
+        ? {
+            row: lastPosition.row,
+            col: lastPosition.col
+        }
+        : null;
+
+
+    // Guardamos el movimiento para Deshacer.
+    history.push({
+        row: row,
+        col: col,
+        number: currentNumber,
+        previousPosition: previousPosition
+    });
+
+
+    board[row][col] = currentNumber;
+
+    lastPosition = {
+        row: row,
+        col: col
+    };
+
+
+    const cellIndex = row * SIZE + col;
+
+    const cell = grid.children[cellIndex];
+
+    cell.textContent = currentNumber;
+
+    cell.classList.remove("valid");
+    cell.classList.add("filled");
+
+
+    currentNumber++;
+
+    updateDisplay();
+
+    // Volvemos a calcular TODAS las casillas válidas
+    // desde el nuevo último número.
+    markValidCells();
+}
+
+
+// =====================================================
+// DESHACER
+// =====================================================
+
+function undoMove() {
+
+    if (history.length === 0 || gameFinished) {
+        return;
+    }
+
+    const move = history.pop();
+
+    board[move.row][move.col] = null;
+
+    const cellIndex = move.row * SIZE + move.col;
+
+    const cell = grid.children[cellIndex];
+
+    cell.textContent = "";
+
+    cell.classList.remove("filled");
+
+    lastPosition = move.previousPosition;
+
+    currentNumber = move.number;
+
+    updateDisplay();
+
+    markValidCells();
+}
+
+
+// =====================================================
+// ACTUALIZAR INFORMACIÓN
+// =====================================================
+
+function updateDisplay() {
+
+    nextNumber.textContent = currentNumber;
+}
+
+
+// =====================================================
+// FINALIZAR PARTIDA
+// =====================================================
+
+function finishGame() {
+
+    if (gameFinished) {
+        return;
+    }
+
+    gameFinished = true;
+
+    const score = currentNumber - 1;
+
+    nextNumber.textContent = score;
+
+    document.getElementById("info").innerHTML =
+        `🏁 Juego terminado — ${playerName}: <strong>${score}</strong>`;
+
+    saveRanking(playerName, score);
+}
+
+
+// =====================================================
+// RANKING
+// =====================================================
+
+function saveRanking(name, score) {
+
+    let ranking = JSON.parse(
+        localStorage.getItem("crucigramaRanking") || "[]"
+    );
+
+
+    ranking.push({
+        name: name,
+        score: score
+    });
+
+
+    ranking.sort((a, b) => {
+
+        if (b.score !== a.score) {
+            return b.score - a.score;
+        }
+
+        return 0;
+    });
+
+
+    // Solo conservamos los 10 mejores.
+    ranking = ranking.slice(0, 10);
+
+
+    localStorage.setItem(
+        "crucigramaRanking",
+        JSON.stringify(ranking)
+    );
+
+
+    showRanking();
+}
+
+
+// =====================================================
+// MOSTRAR RANKING
+// =====================================================
+
+function showRanking() {
+
+    const ranking = JSON.parse(
+        localStorage.getItem("crucigramaRanking") || "[]"
+    );
+
+
+    rankingList.innerHTML = "";
+
+
+    ranking.forEach((entry, index) => {
+
+        const li = document.createElement("li");
+
+        li.textContent =
+            `${entry.name} — ${entry.score}`;
+
+        rankingList.appendChild(li);
+    });
+}
+
+
+// =====================================================
+// REINICIAR
+// =====================================================
+
+restartButton.addEventListener("click", function () {
+
+    startGame();
+
+});
+
+
+// =====================================================
+// DESHACER
+// =====================================================
+
+undoButton.addEventListener("click", function () {
+
+    undoMove();
+
+});
+
+
+// =====================================================
+// INICIO
+// =====================================================
+
+showRanking();
+
+startGame();
+
+</script>
+
+</body>
+</html>
