@@ -1,0 +1,10 @@
+{
+  "name": "Crucigrama Numérico",
+  "short_name": "Crucigrama",
+  "description": "Juego numérico de estrategia",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f2",
+  "theme_color": "#333333"
+}
